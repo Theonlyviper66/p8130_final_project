@@ -1,0 +1,114 @@
+---
+title: "Final Project"
+author: "Xuesen Zhao & Xicheng Xie"
+date: "2022/12/10"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(knitr)
+library(ggridges)
+library(GGally)
+library(corrplot)
+```
+
+## Abstract
+
+While body fat has been an important predictor in the medical field, the measurement of body fat could sometimes be quite challenging. Therefore, the goal of this study was to build a regression model that could help predict the Brozek's percent body fat by using variables that are much easier to measure. Variables were selected based on two main approaches: 1) criterion-based methods that involved the use of Mallow's $C_p$ and Akaike information criterion (AIC); 2) shrinkage techniques that involved lasso, ridge, and elastic net regression. The predictive accuracy of these candidate models were compared and the model with the lowest Root Mean Squared Error was selected as final model. The features included in the final proposed model include age, weight, the circumferences of the neck, thigh, forearm, wrist, abdomen, an interaction term between abdomen and neck, and a second interaction term between weight and abdomen. All assumptions for a multiple linear regression model are checked during model diagnostics. While the model provided a good approximation to Brozek's body fat, it may not be applicable to other measures of body fat. Meanwhile, a standardized measurement protocol for each of these predictors is necessary to reduce measurement bias. 
+
+## Introduction
+
+```{r}
+body_raw = readxl::read_excel("./data/body_density_data.xlsx") %>%
+  janitor::clean_names() 
+```
+
+Body fat has long been an important predictor in many health and medical situations: its role as an indicator of a healthy lifestyle, as a potential risk factor for cardiovascular disease, or as an indicator for obesity, etc. Despite its wide use in medical practices, the measurement of body fat could sometimes be quite challenging. Hence, the goal of this study is to build a regression model that could help us predict the body fat by using variables that are much easier to measure. 
+
+The raw dataset we were given contained `r nrow(body_raw)` rows and `r ncol(body_raw)` columns. We utilized percent body fat measured using Brozek's equation (bodyfat_brozek) as our response variable because some studies have shown that it is a relatively [more accurate alternative](https://pubmed.ncbi.nlm.nih.gov/21085903/) compared to Siri's equation. The dataset also contained information on the subjects' age in years, weight (lbs), measured circumferences of chest, hip, neck and various other body parts in centimeters. 
+
+## Method
+
+### Exploratory Data Analysis 
+
+```{r}
+body = body_raw %>%
+  select(-bodyfat_siri, -body_density, -id) 
+
+ggplot()
+body %>%
+  relocate(bodyfat_brozek) %>%
+  ggpairs()
+```
+
+```{r}
+## Assumption check
+par(mfrow = c(2, 2))
+plot(lm_cp_int2)
+```
+
+The above plots check for the assumptions of a multiple linear regression. The shape of the distribution demonstrated that the regression model could be expressed in a linear fashion. Homoscedasticity is met as the residuals are evenly distributed around 0 with a random pattern. As shown by the normal QQ-plot, the residuals are normally distributed. There is no apparent outliers or influential points as indicated by Cook's distance. We assume the errors are independent as a result of random and independent sampling.   
+
+```{r}
+corrplot(cor(body), type = "upper", diag = FALSE)
+```
+
+
+### Best Subset Selection
+
+Best subset selection was employed as an alternative to identify the best model. Generally speaking, it is a method that involves finding the subset of predictors that best predict the response variable by considering all the possible combinations of explanatory variables. After that, the "best" model with only one predictor would be identified, and then the one with 2 predictors, and so on. 
+
+While there are many criterion for finding the "best" model, such as maximizing adjusted $R^2$, or minimizing Mean Squared Error (MSE), we chose Mallow's $C_p$ as our "gold-standard". It compares the predictive ability of the subset model to the full model, by measuring the bias. We then chose the model with a $C_p$ statistic smaller than or equal to the number of predictors in the subset model. If a number of models meet that condition, the model with the smallest $C_p$ is chosen. We didn't choose Bayesian information criterion (BIC) because it has a severe penalization for models with a larger number of predictors. 
+
+### Interaction
+
+
+
+
+
+## Result
+
+```{r}
+## Cp 
+library(ISLR)
+library(leaps)
+regfit.full = regsubsets(bodyfat_brozek ~., body, nvmax = 13)
+reg.summary = summary(regfit.full)
+
+min_cp = which.min(reg.summary$cp)
+plot(reg.summary$cp, xlab = "Number of Predictors", ylab = "Cp", type = "l")
+points(min_cp, reg.summary$cp[min_cp],col = "red", cex = 2, pch = 20)
+
+# Variable selection with Cp
+plot(regfit.full, scale = "Cp")
+```
+
+The above plot showed the values of $C_p$ with respect to different number of predictors in the candidate models. The smallest $C_p$ is reached for a model with 8 predictors. As shown on the right, although the model with 8 predictors has the smallest $C_p$ (`r min_cp`), its $C_p$ value is only improved by less than 0.1 compared to the second best model with 7 predictors. We chose the model with 7 predictors as our final proposed model because we want to keep the model as succinct as possible while maintaining its predictive accuracy. Having more predictors in the model means more measurements, which could be a potential burden for medical personnel.
+
+The predictors selected by the Mallow's $C_p$ method includes age, weight, the circumference of neck, abdomen, thigh, forearm, and wrist. 
+
+```{r}
+body %>% lm(bodyfat_brozek ~(age+weight+neck+abdomen+thigh+forearm+wrist)^2,data =.) %>%
+summary()
+```
+
+As shown above, the coefficient of the interaction between neck and abdomen is significant, with a p-value less than 0.05. Although the p-value for the interaction between weight and abdomen is larger than 0.05, it's still much smaller compared to other interaction terms. Hence, we would test the effects of both these interactions term by adding them to the model. 
+
+```{r}
+lm_cp_int2 = lm(bodyfat_brozek ~ age + weight+thigh+forearm+wrist+neck+abdomen+neck*abdomen+weight*abdomen, data = body)
+
+summary(lm_cp_int2)
+```
+
+The above output summarized the coefficients of the model with the two interaction terms. The coefficients of both the interaction terms are significant (at 0.05 significance level). This is further proved by the relatively strong correlations between these independent variables as shown in the correlation plot. Hence, we should consider including them in the final model structure. 
+
+## Conclusion 
+
+Among all the candidate models we built, we selected the model with the highest predictive accuracy (as measured by 10-fold CV). The RMSE for predicting the Brozek's body fat, using the final model, is ___. The predictors in the final model include age (years), weight (lbs), the circumferences (cm) of the neck, thigh, forearm, wrist, the interaction between abdomen and neck, and the interaction between weight and abdomen. The proposed model represents a much easier alternative to the direct measurement of body fat composition, with a relatively good predictive ability. Moreover, the number of variables that need to be measured is a manageable amount on an individual basis.
+
+It is inevitable that there are some limitations and cautions to using this model. Since we built our models using Brozek's body fat as the response variable, the model may not be applicable to making predictions for other body fat measures (such as the one that uses Siri's equation). In addition, a standardized measurement protocol for each of these predictors is necessary. Otherwise, large measurement biases would be a likely outcome when the measurements are carried out by different researchers or different equipment. 
